@@ -1,0 +1,60 @@
+language: en-US
+reviews:
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  path_filters:
+    - "!vendor/**"
+    - "!go.sum"
+    - "!api/v1alpha1/zz_generated.deepcopy.go"
+    - "!config/crd/bases/**"
+    - "!pkg/operator/assets/bindata.go"
+    - "!pkg/client/fakes/**"
+    - "!bundle/manifests/**"
+  path_instructions:
+    - path: "api/v1alpha1/*_types.go"
+      instructions: >
+        Verify kubebuilder markers are correct. Check CEL validation rules.
+        Ensure new CRDs enforce singleton naming. Verify field documentation.
+    - path: "pkg/controller/*/controller.go"
+      instructions: >
+        Check watch predicates match component labels. Verify status condition
+        handling uses status.Manager. Ensure create-only mode is respected.
+    - path: "pkg/controller/utils/**"
+      instructions: >
+        Shared code affecting all controllers. Verify test coverage for changes.
+        Check ResourceNeedsUpdate covers new resource types.
+    - path: "bindata/**"
+      instructions: >
+        Upstream YAML templates. Verify alignment with SPIRE versions in
+        pkg/version/version.go.
+    - path: "test/e2e/**"
+      instructions: >
+        Verify proper use of Eventually with timeout/polling. Check DeferCleanup
+        for teardown. Ensure test constants from utils/constants.go are used.
+  auto_review:
+    enabled: true
+    drafts: false
+  tools:
+    golangci-lint:
+      enabled: true
+  instructions:
+    filePatterns:
+      - "REVIEW.md"
+      - "AGENTS.md"
+knowledge_base:
+  learnings:
+    scope: auto
+  issues:
+    scope: auto
+  jira:
+    project_keys: []
+  linear:
+    team_keys: []
+  pullRequests:
+    scope: auto
+chat:
+  auto_reply: true

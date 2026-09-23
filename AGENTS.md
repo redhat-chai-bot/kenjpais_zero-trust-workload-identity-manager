@@ -1,39 +1,43 @@
-# Zero Trust Workload Identity Manager (ZTWIM) - Agentic Documentation
+# Zero Trust Workload Identity Manager (ZTWIM) - Agent Guide
 
-**Component**: Zero Trust Workload Identity Manager
+**Component**: Zero Trust Workload Identity Manager (ZTWIM)
 **Repository**: openshift/zero-trust-workload-identity-manager
 
-> **Retrieval-first**: Before generating code, read the relevant `ai-docs/` files. Start with `domain/` for API types, then `architecture/components.md` for patterns, then `ZTWIM_DEVELOPMENT.md` for workflow.
->
-> **Generic Platform Patterns**: See Platform documentation (openshift/enhancements/ai-docs/) for operator patterns, testing practices, security guidelines, and cross-repo ADRs.
+> **Read ai-docs/ first**: Start with [ai-docs/ARCHITECTURE.md](ai-docs/ARCHITECTURE.md) for internals, then [ai-docs/DEVELOPMENT.md](ai-docs/DEVELOPMENT.md) for workflow, then [ai-docs/TESTING.md](ai-docs/TESTING.md) for test patterns.
 
 ## What is ZTWIM?
 
-A controller-runtime operator (not library-go) that deploys and manages upstream SPIFFE/SPIRE components on OpenShift 4.18+ so workloads get dynamic, rotatable identities (JWT-SVID / X.509-SVID). GA since v1.0.0; published to `stable-v1` channel via `redhat-operators` CatalogSource.
+A controller-runtime operator that deploys upstream SPIFFE/SPIRE components on OpenShift so workloads get dynamic, rotatable X.509/JWT identities. It manages upstream resources via static YAML manifests (bindata), deploying upstream container images via `RELATED_IMAGE_*` env vars.
 
-**Key Principle**: The operator does not embed upstream code — it manages upstream resources as static YAML manifests (bindata) applied imperatively, deploying upstream container images via `RELATED_IMAGE_*` env vars.
+## Critical Warnings
 
-## Core Components
+1. **NEVER hand-edit generated files** -- `zz_generated.deepcopy.go`, `config/crd/bases/*.yaml`, `pkg/operator/assets/bindata.go`. Use `make generate`, `make manifests`, `make update-bindata`.
+2. **All five CRDs are cluster-scoped singletons named `cluster`** -- enforced by CEL XValidation. Upstream `spire.spiffe.io` CRDs are NOT singletons.
+3. **Vendor is tracked** -- after dependency changes, always `make vendor` and commit the vendor dir. Build uses `-mod=vendor`.
+4. **Resource apply uses Get+Create/Update, NOT SSA** -- each controller uses `ResourceNeedsUpdate()` for diff detection (`pkg/controller/utils/resource_comparison.go`).
+5. **Run `make verify` before pushing** -- CI enforces vet + fmt + golangci-lint.
 
-| Controller | Purpose | Key Resources |
-|---|---|---|
-| **ZTWIM** | Status aggregator | Watches all operand CRs + OperatorCondition, syncs Upgradeable to OLM |
-| **SpireServer** | SPIRE server lifecycle | StatefulSet, ConfigMaps, Routes, webhooks, federation, SPIFFE CRs |
-| **SpireAgent** | SPIRE agent lifecycle | DaemonSet, custom SCC, ConfigMap, ClusterRole |
-| **SpiffeCSIDriver** | CSI driver lifecycle | DaemonSet, CSIDriver, privileged SCC RoleBinding |
-| **SpireOIDCDiscoveryProvider** | OIDC discovery | Deployment, Route, ClusterSPIFFEID, ConfigMap |
+## Controllers
 
-**Quick Start**: `oc get zerotrustworkloadidentitymanagers cluster -o yaml` | `oc get spireservers,spireagents,spiffecsidrivers,spireoidcdiscoveryproviders`
+| Controller | CR | Workload | Key Resources |
+|---|---|---|---|
+| ZTWIM | `ZeroTrustWorkloadIdentityManager` | None (aggregator) | Watches all operand CRs, syncs Upgradeable to OLM |
+| SpireServer | `SpireServer` | StatefulSet | ConfigMaps, Routes, webhooks, RBAC, federation |
+| SpireAgent | `SpireAgent` | DaemonSet | Custom SCC, ConfigMap, ClusterRole |
+| SpiffeCSIDriver | `SpiffeCSIDriver` | DaemonSet | CSIDriver, privileged SCC RoleBinding |
+| SpireOIDCDP | `SpireOIDCDiscoveryProvider` | Deployment | Route, ClusterSPIFFEID, ConfigMap |
 
-## Critical Patterns
+## Documentation
 
-**1. Never hand-edit generated files** — `zz_generated.deepcopy.go`, `config/crd/bases/*.yaml`, `pkg/operator/assets/bindata.go`. Use `make generate`, `make manifests`, `make update-bindata`. Run `make verify` before pushing.
-
-**2. All five ZTWIM-owned CRDs are cluster-scoped singletons named `cluster`** — enforced by CEL XValidation. The three upstream `spire.spiffe.io` CRDs (ClusterSPIFFEID, ClusterFederatedTrustDomain, ClusterStaticEntry) are NOT singletons — see [`ai-docs/domain/upstream-spiffe-crds.md`](ai-docs/domain/upstream-spiffe-crds.md). Controller names use the full prefix: `zero-trust-workload-identity-manager-<component>-controller` (constants in `pkg/controller/utils/constants.go`).
-
-**3. Operand controllers watch the parent ZTWIM CR** — all four operand controllers watch `ZeroTrustWorkloadIdentityManager` with `ZTWIMSpecChangedPredicate`, and managed resources with component-specific label predicates (`ControllerManagedResourcesForComponent`). The ZTWIM controller does NOT create operand CRs — it only aggregates status.
-
-**4. Vendor is tracked** — after dependency changes, always `make vendor` and commit the vendor directory. The build uses `-mod=vendor`.
+| Need | Start here |
+|---|---|
+| Architecture, internals, contracts | [ai-docs/ARCHITECTURE.md](ai-docs/ARCHITECTURE.md) |
+| Build, workflow, common tasks | [ai-docs/DEVELOPMENT.md](ai-docs/DEVELOPMENT.md) |
+| Test patterns (unit + E2E) | [ai-docs/TESTING.md](ai-docs/TESTING.md) |
+| Design docs, enhancements | [ai-docs/ENHANCEMENTS.md](ai-docs/ENHANCEMENTS.md) |
+| CRD type definitions | [api/v1alpha1/](api/v1alpha1/) |
+| Shared controller utilities | [pkg/controller/utils/](pkg/controller/utils/) |
+| Platform patterns | [openshift/enhancements](https://github.com/openshift/enhancements) (`dev-guide/`, `CONVENTIONS.md`) |
 
 ## Key Build Commands
 
@@ -44,44 +48,12 @@ A controller-runtime operator (not library-go) that deploys and manages upstream
 | `make verify` | vet + fmt + golangci-lint |
 | `make manifests generate update-bindata` | Regenerate all generated files |
 
-## Documentation Structure
+## Upstream
 
-```text
-ai-docs/
-├── domain/                    # CRD type docs (ZTWIM, SpireServer, SpireAgent, etc.)
-│   └── upstream-spiffe-crds.md
-├── architecture/              # Repo layout, controller table, reconciliation flow
-│   └── components.md
-├── decisions/                 # Component ADRs (controller-runtime choice, bindata)
-│   ├── adr-0001-*.md
-│   └── adr-template.md
-├── exec-plans/
-│   └── README.md              # Pointer to Platform guidance
-├── references/
-│   ├── ecosystem.md           # Links to Platform
-│   └── enhancements.md        # Enhancement proposals & upstream refs
-├── ZTWIM_DEVELOPMENT.md       # Build, workflow, common tasks, env vars
-└── ZTWIM_TESTING.md           # Unit (FakeCustomCtrlClient) + E2E (Ginkgo)
-```
-
-**AI Agent Path**: [`ai-docs/README.md`](ai-docs/README.md) → domain/ → architecture/ → ZTWIM_DEVELOPMENT.md → decisions/
-
-**Platform Patterns**: [Operator](https://github.com/openshift/enhancements/tree/master/ai-docs) | [Testing](https://github.com/openshift/enhancements/tree/master/ai-docs) | [Security](https://github.com/openshift/enhancements/tree/master/ai-docs)
-
-## Upstream Operands
-
-| Upstream | Integration |
+| Project | Integration |
 |---|---|
-| [spire](https://github.com/spiffe/spire) | Server (StatefulSet), agent (DaemonSet), OIDC (Deployment) images |
-| [spire-controller-manager](https://github.com/spiffe/spire-controller-manager) | Go module dep for API types; sidecar with SPIRE server |
+| [spire](https://github.com/spiffe/spire) | Server, agent, OIDC images |
+| [spire-controller-manager](https://github.com/spiffe/spire-controller-manager) | API types (Go module); sidecar with server |
 | [spiffe-csi](https://github.com/spiffe/spiffe-csi) | CSI driver DaemonSet image |
 
-**Release**: Managed via [zero-trust-workload-identity-manager-release](https://github.com/openshift/zero-trust-workload-identity-manager-release) (Konflux, dual-branch model: `release-*` for images, `main` for FBC catalogs).
-
-## External References
-
-- [SPIFFE Specification](https://github.com/spiffe/spiffe) | [SPIRE Docs](https://spiffe.io/docs/latest/spire-about/) | [OpenShift Docs](https://docs.openshift.com/)
-
----
-
-**Platform Documentation**: openshift/enhancements/ai-docs/
+**Platform Documentation**: [openshift/enhancements](https://github.com/openshift/enhancements) -- `dev-guide/`, `guidelines/`, `CONVENTIONS.md`
