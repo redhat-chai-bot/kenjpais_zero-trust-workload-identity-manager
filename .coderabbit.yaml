@@ -1,0 +1,54 @@
+language: en-US
+reviews:
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  path_filters:
+    - "!**/zz_generated*.go"
+    - "!**/bindata.go"
+    - "!config/crd/bases/**"
+    - "!bundle/manifests/**"
+    - "!vendor/**"
+    - "!pkg/client/fakes/**"
+  path_instructions:
+    - path: "api/v1alpha1/**"
+      instructions: |
+        Review CRD type changes per REVIEW.md:
+        - Verify kubebuilder validation markers
+        - Check CEL XValidation rules for singleton and immutability
+        - Watch for breaking changes to existing fields
+    - path: "pkg/controller/**"
+      instructions: |
+        Review controller logic per REVIEW.md:
+        - Must use CustomCtrlClient, not raw client.Client
+        - New resources must be in Watches() chain
+        - Use ResourceNeedsUpdate() for drift detection
+        - Respect create-only mode
+    - path: "pkg/controller/utils/**"
+      instructions: |
+        Changes here affect ALL controllers — review impact broadly.
+        Error classification affects requeue; label changes affect cache filtering.
+    - path: "bindata/**"
+      instructions: |
+        Verify make update-bindata was run. Check resource names match constants.
+    - path: "cmd/**"
+      instructions: |
+        Check scheme registration order and flag changes.
+chat:
+  auto_reply: true
+knowledge_base:
+  opt_out: false
+  learnings:
+    scope: auto
+  issues:
+    scope: auto
+  jira:
+    project_keys: []
+  pull_requests:
+    scope: auto
+  linear:
+    team_keys: []
+  file_patterns:
+    - "REVIEW.md"
+    - "AGENTS.md"
